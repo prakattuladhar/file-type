@@ -46,6 +46,10 @@ const names = {
 	dng: [
 		'fixture-Leica-M10',
 	],
+	epub: [
+		'fixture',
+		'fixture-crlf',
+	],
 	nef: [
 		'fixture',
 		'fixture2',
@@ -609,4 +613,9 @@ test('supported files types are listed alphabetically', async t => {
 		previousFileType = currentFileType;
 		currentNode = currentNode.next;
 	}
+});
+
+test('corrupt MKV throws', async t => {
+	const filePath = path.join(__dirname, 'fixture/fixture-corrupt.mkv');
+	await t.throwsAsync(fileTypeFromFile(filePath), {message: /out of range/});
 });

@@ -109,7 +109,7 @@ class StreamReader {
         // continue reading from stream if required
         while (remaining > 0 && !this.endOfStream) {
             const reqLen = Math.min(remaining, maxStreamReadSize);
-            const chunkLen = await this._read(buffer, offset + bytesRead, reqLen);
+            const chunkLen = await this.readFromStream(buffer, offset + bytesRead, reqLen);
             bytesRead += chunkLen;
             if (chunkLen < reqLen)
                 break;
@@ -124,7 +124,7 @@ class StreamReader {
      * @param length Number of bytes to read
      * @returns Number of bytes read
      */
-    async _read(buffer, offset, length) {
+    async readFromStream(buffer, offset, length) {
         const readBuffer = this.s.read(length);
         if (readBuffer) {
             buffer.set(readBuffer, offset);
@@ -231,7 +231,7 @@ class AbstractTokenizer {
         return token.get(this.numBuffer, 0);
     }
     /**
-     *  Ignore number of bytes, advances the pointer in under tokenizer-stream.
+     * Ignore number of bytes, advances the pointer in under tokenizer-stream.
      * @param length - Number of bytes to ignore
      * @return resolves the number of bytes ignored, equals length if this available, otherwise the number of bytes available
      */
@@ -1084,6 +1084,12 @@ class FileTypeParser {
 
 		// -- 3-byte signatures --
 
+		if (this.check([0xEF, 0xBB, 0xBF])) { // UTF-8-BOM
+			// Strip off UTF-8-BOM
+			this.tokenizer.ignore(3);
+			return this.parse(tokenizer);
+		}
+
 		if (this.check([0x47, 0x49, 0x46])) {
 			return {
 				ext: 'gif',
@@ -1269,7 +1275,7 @@ class FileTypeParser {
 					// - one entry indicating specific type of file.
 					// MS Office, OpenOffice and LibreOffice may put the parts in different order, so the check should not rely on it.
 					if (zipHeader.filename === 'mimetype' && zipHeader.compressedSize === zipHeader.uncompressedSize) {
-						const mimeType = await tokenizer.readToken(new StringType(zipHeader.compressedSize, 'utf-8'));
+						const mimeType = (await tokenizer.readToken(new StringType(zipHeader.compressedSize, 'utf-8'))).trim();
 
 						switch (mimeType) {
 							case 'application/epub+zip':
@@ -1592,7 +1598,7 @@ class FileTypeParser {
 				let ic = 0; // 0 = A, 1 = B, 2 = C, 3
 				// = D
 
-				while ((msb & mask) === 0) {
+				while ((msb & mask) === 0 && mask !== 0) {
 					++ic;
 					mask >>= 1;
 				}
@@ -1613,7 +1619,7 @@ class FileTypeParser {
 				};
 			}
 
-			async function readChildren(level, children) {
+			async function readChildren(children) {
 				while (children > 0) {
 					const element = await readElement();
 					if (element.id === 0x42_82) {
@@ -1627,7 +1633,7 @@ class FileTypeParser {
 			}
 
 			const re = await readElement();
-			const docType = await readChildren(1, re.len);
+			const docType = await readChildren(re.len);
 
 			switch (docType) {
 				case 'webm':
@@ -1954,13 +1960,6 @@ class FileTypeParser {
 			};
 		}
 
-		if (this.check([0xEF, 0xBB, 0xBF]) && this.checkString('<?xml', {offset: 3})) { // UTF-8-BOM
-			return {
-				ext: 'xml',
-				mime: 'application/xml',
-			};
-		}
-
 		// -- 9-byte signatures --
 
 		if (this.check([0x49, 0x49, 0x52, 0x4F, 0x08, 0x00, 0x00, 0x00, 0x18])) {
@@ -2098,14 +2097,15 @@ class FileTypeParser {
 			};
 		}
 
-		if (
-			this.check([0xFE, 0xFF, 0, 60, 0, 63, 0, 120, 0, 109, 0, 108]) // UTF-16-BOM-LE
-			|| this.check([0xFF, 0xFE, 60, 0, 63, 0, 120, 0, 109, 0, 108, 0]) // UTF-16-BOM-LE
-		) {
-			return {
-				ext: 'xml',
-				mime: 'application/xml',
-			};
+		if (this.check([0xFE, 0xFF])) { // UTF-16-BOM-LE
+			if (this.check([0, 60, 0, 63, 0, 120, 0, 109, 0, 108], {offset: 2})) {
+				return {
+					ext: 'xml',
+					mime: 'application/xml',
+				};
+			}
+
+			return undefined; // Some unknown text based format
 		}
 
 		// -- Unsafe signatures --
@@ -2299,11 +2299,22 @@ class FileTypeParser {
 			};
 		}
 
-		if (this.check([0xFF, 0xFE, 0xFF, 0x0E, 0x53, 0x00, 0x6B, 0x00, 0x65, 0x00, 0x74, 0x00, 0x63, 0x00, 0x68, 0x00, 0x55, 0x00, 0x70, 0x00, 0x20, 0x00, 0x4D, 0x00, 0x6F, 0x00, 0x64, 0x00, 0x65, 0x00, 0x6C, 0x00])) {
-			return {
-				ext: 'skp',
-				mime: 'application/vnd.sketchup.skp',
-			};
+		if (this.check([0xFF, 0xFE])) { // UTF-16-BOM-BE
+			if (this.check([60, 0, 63, 0, 120, 0, 109, 0, 108, 0], {offset: 2})) {
+				return {
+					ext: 'xml',
+					mime: 'application/xml',
+				};
+			}
+
+			if (this.check([0xFF, 0x0E, 0x53, 0x00, 0x6B, 0x00, 0x65, 0x00, 0x74, 0x00, 0x63, 0x00, 0x68, 0x00, 0x55, 0x00, 0x70, 0x00, 0x20, 0x00, 0x4D, 0x00, 0x6F, 0x00, 0x64, 0x00, 0x65, 0x00, 0x6C, 0x00], {offset: 2})) {
+				return {
+					ext: 'skp',
+					mime: 'application/vnd.sketchup.skp',
+				};
+			}
+
+			return undefined; // Some text based format
 		}
 
 		if (this.checkString('-----BEGIN PGP MESSAGE-----')) {

@@ -44,6 +44,10 @@ We accept contributions for commonly used modern file formats, not historical or
 npm install file-type
 ```
 
+**This package is a ESM package. Your project needs to be ESM too. [Read more](https://gist.github.com/sindresorhus/a39789f98801d908bbc7ff3ecc99d99c).**
+
+If you use it with Webpack, you need the latest Webpack version and ensure you configure it correctly for ESM.
+
 ## Usage
 
 #### Node.js
@@ -137,7 +141,7 @@ Detect the file type of a `Buffer`, `Uint8Array`, or `ArrayBuffer`.
 
 The file type is detected by checking the [magic number](https://en.wikipedia.org/wiki/Magic_number_(programming)#Magic_numbers_in_files) of the buffer.
 
-If file access is available, it is recommended to use `FileType.fromFile()` instead.
+If file access is available, it is recommended to use `fileTypeFromFile()` instead.
 
 Returns a `Promise` for an object with the detected file type and MIME type:
 
@@ -278,7 +282,7 @@ A file source implementing the [tokenizer interface](https://github.com/Borewit/
 
 ### fileTypeStream(readableStream, options?)
 
-Returns a `Promise` which resolves to the original readable stream argument, but with an added `fileType` property, which is an object like the one returned from `FileType.fromFile()`.
+Returns a `Promise` which resolves to the original readable stream argument, but with an added `fileType` property, which is an object like the one returned from `fileTypeFromFile()`.
 
 This method can be handy to put in between a stream, but it comes with a price.
 Internally `stream()` builds up a buffer of `sampleSize` bytes, used as a sample, to determine the file type.
